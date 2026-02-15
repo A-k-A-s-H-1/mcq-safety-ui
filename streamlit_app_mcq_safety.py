@@ -17,6 +17,11 @@ import sys
 import ssl
 
 import torch
+import importlib.util
+
+SENTENCEPIECE_AVAILABLE = importlib.util.find_spec("sentencepiece") is not None
+if not SENTENCEPIECE_AVAILABLE:
+    print("Warning: sentencepiece not available, some features may be limited")
 torch.set_num_threads(2)  # Limit CPU threads
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizer parallelism
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
