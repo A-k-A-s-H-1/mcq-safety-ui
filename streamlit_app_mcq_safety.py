@@ -13,6 +13,35 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import streamlit as st
+import sys
+import ssl
+
+import torch
+torch.set_num_threads(2)  # Limit CPU threads
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizer parallelism
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+
+
+# Fix for SSL certificate issues with NLTK download
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+# NLTK data directory setup
+nltk_data_dir = os.path.join(os.path.dirname(__file__), "nltk_data")
+os.makedirs(nltk_data_dir, exist_ok=True)
+nltk.data.path.append(nltk_data_dir)
+
+# Download NLTK data at startup
+import nltk
+for resource in ['punkt', 'stopwords', 'averaged_perceptron_tagger', 'punkt_tab']:
+    try:
+        nltk.data.find(f'tokenizers/{resource}' if resource == 'punkt' else f'corpora/{resource}')
+    except LookupError:
+        nltk.download(resource, download_dir=nltk_data_dir, quiet=True)
 
 # ---------------------------------------------------------------------------
 # Teacher / Student quiz storage (file-based)
@@ -2480,7 +2509,7 @@ def main() -> None:
                         else:
                             st.markdown("#### Student Attempts")
                             for a in atts:
-                                pct = 100 * a['score'] // max(1, a['total'])
+                                pct = (100 * a['score']) // max(1, a['total'])
                                 status = "🟢" if pct >= 70 else "🟡" if pct >= 50 else "🔴"
                                 st.markdown(f"{status} **{a['student_name']}**: {a['score']}/{a['total']} ({pct}%) — {a['completed_at'][:10]}")
 
