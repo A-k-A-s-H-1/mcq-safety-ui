@@ -1,0 +1,9 @@
+# Quiz and attempt data (teacher/student)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
