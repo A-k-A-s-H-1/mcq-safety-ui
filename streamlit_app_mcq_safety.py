@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
+import nltk
 
 import numpy as np
 import streamlit as st
