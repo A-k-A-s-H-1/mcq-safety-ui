@@ -1,6 +1,4 @@
-python3.10
-python3.10-dev
-python3.10-distutils
 build-essential
 cmake
 pkg-config
+python3-dev
