@@ -46,8 +46,6 @@ nltk.data.path.insert(0, nltk_data_dir)
 import nltk
 
 print("📥 Checking NLTK resources...")
-
-# Download all required resources
 for resource in ['punkt', 'punkt_tab', 'stopwords', 'averaged_perceptron_tagger']:
     try:
         if resource == 'punkt':
@@ -64,49 +62,45 @@ for resource in ['punkt', 'punkt_tab', 'stopwords', 'averaged_perceptron_tagger'
         nltk.download(resource, download_dir=nltk_data_dir, quiet=False)
         print(f"✅ {resource} downloaded")
 
-# COMPREHENSIVE FIX: Monkey patch the entire PerceptronTagger class
+# COMPLETE OVERRIDE of the problematic PerceptronTagger class
 import nltk.tag.perceptron
+import os
+import json
 
-# Save the original load_from_json method
+# Save the original method
 original_load_from_json = nltk.tag.perceptron.PerceptronTagger.load_from_json
 
-def patched_load_from_json(self, lang='eng'):
-    """Patch to handle both eng and non-eng tagger names"""
+def fixed_load_from_json(self, lang='eng'):
+    """Fixed version that handles ZipFilePathPointer correctly"""
     try:
-        # Try the original method first
-        original_load_from_json(self, lang)
-    except LookupError:
-        try:
-            # If lang is 'eng', try without the _eng suffix
-            if lang == 'eng':
-                # Try to find the non-eng version
-                loc = nltk.data.find('taggers/averaged_perceptron_tagger/')
-                # Load the weights and tagdict directly
-                import json
-                with open(loc + 'averaged_perceptron_tagger.pickle.weights.json', 'r') as fin:
-                    self.model.weights = json.load(fin)
-                with open(loc + 'averaged_perceptron_tagger.pickle.tagdict.json', 'r') as fin:
-                    self.tagdict = json.load(fin)
-                with open(loc + 'averaged_perceptron_tagger.pickle.classes.json', 'r') as fin:
-                    self.classes = json.load(fin)
-                return
-        except:
-            pass
+        # Try to find the tagger
+        if lang == 'eng':
+            try:
+                loc = nltk.data.find('taggers/averaged_perceptron_tagger')
+            except LookupError:
+                loc = nltk.data.find('taggers/averaged_perceptron_tagger_eng')
+        else:
+            loc = nltk.data.find(f'taggers/averaged_perceptron_tagger_{lang}')
         
-        # If all else fails, try to download the tagger
-        try:
-            nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_dir, quiet=False)
-            # Try again with the original method
-            original_load_from_json(self, lang)
-        except:
-            # Ultimate fallback - create a dummy tagger that just returns noun tags
-            print("WARNING: Using fallback POS tagger")
-            self.model.weights = {}
-            self.tagdict = {}
-            self.classes = {'NN'}
+        # Convert to string path if it's a ZipFilePathPointer
+        loc_path = str(loc)
+        
+        # Load the files
+        with open(os.path.join(loc_path, 'averaged_perceptron_tagger.pickle.weights.json'), 'r') as fin:
+            self.model.weights = json.load(fin)
+        with open(os.path.join(loc_path, 'averaged_perceptron_tagger.pickle.tagdict.json'), 'r') as fin:
+            self.tagdict = json.load(fin)
+        with open(os.path.join(loc_path, 'averaged_perceptron_tagger.pickle.classes.json'), 'r') as fin:
+            self.classes = json.load(fin)
+    except Exception as e:
+        print(f"Error loading tagger: {e}, using fallback")
+        # Create minimal valid tagger
+        self.model.weights = {}
+        self.tagdict = {}
+        self.classes = {'NN'}
 
-# Apply the patch
-nltk.tag.perceptron.PerceptronTagger.load_from_json = patched_load_from_json
+# Apply the fix
+nltk.tag.perceptron.PerceptronTagger.load_from_json = fixed_load_from_json
 
 print("📥 NLTK setup complete!")
 # ---------------------------------------------------------------------------
@@ -458,16 +452,47 @@ class ImprovedMCQGenerator:
 
     def _word_tokenize(self, text: str) -> List[str]:
         return self._nltk.tokenize.word_tokenize(text)
+    
+    def _improved_pos_fallback(self, tokens: List[str]) -> List[Tuple[str, str]]:
+      result = []
+      for token in tokens:
+        token_lower = token.lower()
+        
+        # Better heuristics for entity extraction
+        if token[0].isupper() and not token.isupper() and len(token) > 1:
+            # Proper noun - very important for entity extraction
+            result.append((token, 'NNP'))
+        elif token_lower.endswith('ing'):
+            result.append((token, 'VBG'))  # Verb
+        elif token_lower.endswith('ed'):
+            result.append((token, 'VBD'))  # Verb
+        elif token_lower.endswith('ly'):
+            result.append((token, 'RB'))   # Adverb
+        elif token_lower in ['the', 'a', 'an', 'this', 'that']:
+            result.append((token, 'DT'))   # Determiner
+        elif token_lower in ['in', 'on', 'at', 'for', 'to', 'with']:
+            result.append((token, 'IN'))   # Preposition
+        elif token.replace('.', '').isdigit():
+            result.append((token, 'CD'))   # Number
+        elif len(token) > 5 and token_lower not in self.stop_words:
+            # Long words that aren't stopwords are likely important
+            result.append((token, 'NN'))   # Noun
+        else:
+            # Default
+            result.append((token, 'NN'))   # Noun
+    
+      return result
 
     def _pos_tag(self, tokens: List[str]) -> List[Tuple[str, str]]:
+        """POS tagging with multiple fallback strategies."""
         if not tokens:
-           return []
+             return []
         try:
             return self._nltk.pos_tag(tokens)
         except Exception as e:
-            print(f"POS tagging failed: {e}, using fallback")
-            # Simple fallback - assume everything is a noun
-            return [(token, 'NN') for token in tokens]
+             print(f"POS tagging failed: {e}, using improved fallback")
+             return self._improved_pos_fallback(tokens)
+
 
     # -----------------------------------------------------------------------
     # EXACT OLD WORKING CODE: Question generation
