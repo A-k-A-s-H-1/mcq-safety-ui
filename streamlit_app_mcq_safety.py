@@ -30,6 +30,7 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 # Fix for SSL certificate issues with NLTK download
 # Fix for SSL certificate issues with NLTK download
+# Fix for SSL certificate issues with NLTK download
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -40,24 +41,16 @@ else:
 # NLTK data directory setup
 nltk_data_dir = os.path.join(os.path.dirname(__file__), "nltk_data")
 os.makedirs(nltk_data_dir, exist_ok=True)
-nltk.data.path.insert(0, nltk_data_dir)  # Use insert instead of append to prioritize our directory
+nltk.data.path.insert(0, nltk_data_dir)
 
-# Download required NLTK data with visible output
+# Download required NLTK data
 import nltk
 
 print("📥 Checking NLTK resources...")
 
-# List of required resources (using CORRECT names)
-required_resources = [
-    'punkt',
-    'punkt_tab', 
-    'stopwords',
-    'averaged_perceptron_tagger',  # This is the correct name - NOT _eng
-]
-
-for resource in required_resources:
+# Download all required resources
+for resource in ['punkt', 'punkt_tab', 'stopwords', 'averaged_perceptron_tagger']:
     try:
-        # Check if already downloaded
         if resource == 'punkt':
             nltk.data.find('tokenizers/punkt')
         elif resource == 'punkt_tab':
@@ -72,9 +65,28 @@ for resource in required_resources:
         nltk.download(resource, download_dir=nltk_data_dir, quiet=False)
         print(f"✅ {resource} downloaded")
 
+# CRITICAL FIX: Monkey patch NLTK to use the correct tagger name
+import nltk.tag.perceptron
+
+# Save the original find function
+original_find = nltk.data.find
+
+def patched_find(resource_name, *args, **kwargs):
+    """Patch to redirect averaged_perceptron_tagger_eng to averaged_perceptron_tagger"""
+    if resource_name.startswith('taggers/averaged_perceptron_tagger_eng'):
+        # Redirect to the non-eng version
+        new_name = resource_name.replace('_eng', '')
+        try:
+            return original_find(new_name, *args, **kwargs)
+        except LookupError:
+            # If that fails, try the original
+            return original_find(resource_name, *args, **kwargs)
+    return original_find(resource_name, *args, **kwargs)
+
+# Apply the patch
+nltk.data.find = patched_find
+
 print("📥 NLTK setup complete!")
-
-
 # ---------------------------------------------------------------------------
 # Teacher / Student quiz storage (file-based)
 # ---------------------------------------------------------------------------
