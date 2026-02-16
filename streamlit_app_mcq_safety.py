@@ -37,70 +37,20 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
-# NLTK data directory setup
+# Simple NLTK setup for deployment
+import nltk
+
+# Set NLTK data path to a writable directory in the cloud
 nltk_data_dir = os.path.join(os.path.dirname(__file__), "nltk_data")
 os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.data.path.insert(0, nltk_data_dir)
 
-# Download required NLTK data
-import nltk
-
-print("📥 Checking NLTK resources...")
-for resource in ['punkt', 'punkt_tab', 'stopwords', 'averaged_perceptron_tagger']:
-    try:
-        if resource == 'punkt':
-            nltk.data.find('tokenizers/punkt')
-        elif resource == 'punkt_tab':
-            nltk.data.find('tokenizers/punkt_tab')
-        elif resource == 'stopwords':
-            nltk.data.find('corpora/stopwords')
-        elif resource == 'averaged_perceptron_tagger':
-            nltk.data.find('taggers/averaged_perceptron_tagger')
-        print(f"✅ {resource} already available")
-    except LookupError:
-        print(f"📥 Downloading {resource}...")
-        nltk.download(resource, download_dir=nltk_data_dir, quiet=False)
-        print(f"✅ {resource} downloaded")
-
-# COMPLETE OVERRIDE of the problematic PerceptronTagger class
-import nltk.tag.perceptron
-import os
-import json
-
-# Save the original method
-original_load_from_json = nltk.tag.perceptron.PerceptronTagger.load_from_json
-
-def fixed_load_from_json(self, lang='eng'):
-    """Fixed version that handles ZipFilePathPointer correctly"""
-    try:
-        # Try to find the tagger
-        if lang == 'eng':
-            try:
-                loc = nltk.data.find('taggers/averaged_perceptron_tagger')
-            except LookupError:
-                loc = nltk.data.find('taggers/averaged_perceptron_tagger_eng')
-        else:
-            loc = nltk.data.find(f'taggers/averaged_perceptron_tagger_{lang}')
-        
-        # Convert to string path if it's a ZipFilePathPointer
-        loc_path = str(loc)
-        
-        # Load the files
-        with open(os.path.join(loc_path, 'averaged_perceptron_tagger.pickle.weights.json'), 'r') as fin:
-            self.model.weights = json.load(fin)
-        with open(os.path.join(loc_path, 'averaged_perceptron_tagger.pickle.tagdict.json'), 'r') as fin:
-            self.tagdict = json.load(fin)
-        with open(os.path.join(loc_path, 'averaged_perceptron_tagger.pickle.classes.json'), 'r') as fin:
-            self.classes = json.load(fin)
-    except Exception as e:
-        print(f"Error loading tagger: {e}, using fallback")
-        # Create minimal valid tagger
-        self.model.weights = {}
-        self.tagdict = {}
-        self.classes = {'NN'}
-
-# Apply the fix
-nltk.tag.perceptron.PerceptronTagger.load_from_json = fixed_load_from_json
+# Download exactly what the old code used
+print("📥 Downloading NLTK data for deployment...")
+nltk.download('punkt', download_dir=nltk_data_dir, quiet=False)
+nltk.download('stopwords', download_dir=nltk_data_dir, quiet=False)
+nltk.download('punkt_tab', download_dir=nltk_data_dir, quiet=False)
+nltk.download('averaged_perceptron_tagger_eng', download_dir=nltk_data_dir, quiet=False)
 
 print("📥 NLTK setup complete!")
 # ---------------------------------------------------------------------------
@@ -453,47 +403,10 @@ class ImprovedMCQGenerator:
     def _word_tokenize(self, text: str) -> List[str]:
         return self._nltk.tokenize.word_tokenize(text)
     
-    def _improved_pos_fallback(self, tokens: List[str]) -> List[Tuple[str, str]]:
-      result = []
-      for token in tokens:
-        token_lower = token.lower()
-        
-        # Better heuristics for entity extraction
-        if token[0].isupper() and not token.isupper() and len(token) > 1:
-            # Proper noun - very important for entity extraction
-            result.append((token, 'NNP'))
-        elif token_lower.endswith('ing'):
-            result.append((token, 'VBG'))  # Verb
-        elif token_lower.endswith('ed'):
-            result.append((token, 'VBD'))  # Verb
-        elif token_lower.endswith('ly'):
-            result.append((token, 'RB'))   # Adverb
-        elif token_lower in ['the', 'a', 'an', 'this', 'that']:
-            result.append((token, 'DT'))   # Determiner
-        elif token_lower in ['in', 'on', 'at', 'for', 'to', 'with']:
-            result.append((token, 'IN'))   # Preposition
-        elif token.replace('.', '').isdigit():
-            result.append((token, 'CD'))   # Number
-        elif len(token) > 5 and token_lower not in self.stop_words:
-            # Long words that aren't stopwords are likely important
-            result.append((token, 'NN'))   # Noun
-        else:
-            # Default
-            result.append((token, 'NN'))   # Noun
-    
-      return result
 
     def _pos_tag(self, tokens: List[str]) -> List[Tuple[str, str]]:
-        """POS tagging with multiple fallback strategies."""
-        if not tokens:
-             return []
-        try:
+        
             return self._nltk.pos_tag(tokens)
-        except Exception as e:
-             print(f"POS tagging failed: {e}, using improved fallback")
-             return self._improved_pos_fallback(tokens)
-
-
     # -----------------------------------------------------------------------
     # EXACT OLD WORKING CODE: Question generation
     # -----------------------------------------------------------------------
