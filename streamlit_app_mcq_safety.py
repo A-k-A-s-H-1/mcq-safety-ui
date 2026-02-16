@@ -29,6 +29,7 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 
 # Fix for SSL certificate issues with NLTK download
+# Fix for SSL certificate issues with NLTK download
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -36,100 +37,42 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
-
 # NLTK data directory setup
 nltk_data_dir = os.path.join(os.path.dirname(__file__), "nltk_data")
 os.makedirs(nltk_data_dir, exist_ok=True)
-nltk.data.path.append(nltk_data_dir)
+nltk.data.path.insert(0, nltk_data_dir)  # Use insert instead of append to prioritize our directory
 
-NLTK_RESOURCES = {
-    'punkt': {
-        'path': 'tokenizers/punkt',
-        'download_name': 'punkt',
-        'fallback_names': ['punkt']
-    },
-    'punkt_tab': {
-        'path': 'tokenizers/punkt_tab',
-        'download_name': 'punkt_tab',
-        'fallback_names': ['punkt_tab']
-    },
-    'stopwords': {
-        'path': 'corpora/stopwords',
-        'download_name': 'stopwords',
-        'fallback_names': ['stopwords']
-    },
-    'averaged_perceptron_tagger': {
-        'path': 'taggers/averaged_perceptron_tagger',
-        'download_name': 'averaged_perceptron_tagger',
-        'fallback_names': ['averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng']
-    }
-}
+# Download required NLTK data with visible output
+import nltk
 
+print("📥 Checking NLTK resources...")
 
-def download_nltk_resource(resource_key: str) -> bool:
-    """Download a specific NLTK resource with multiple fallback attempts."""
-    if resource_key not in NLTK_RESOURCES:
-        return False
-    
-    resource = NLTK_RESOURCES[resource_key]
-    
-    # Try each possible download name
-    for download_name in resource['fallback_names']:
-        try:
-            print(f"Downloading {download_name}...")
-            nltk.download(download_name, download_dir=nltk_data_dir, quiet=True)
-            
-            # Verify the download worked by trying to find it
-            try:
-                nltk.data.find(resource['path'])
-                return True
-            except LookupError:
-                # Try alternative path if main path fails
-                if download_name == 'averaged_perceptron_tagger':
-                    try:
-                        nltk.data.find('taggers/averaged_perceptron_tagger_eng')
-                        return True
-                    except LookupError:
-                        continue
-        except Exception as e:
-            print(f"Failed to download {download_name}: {e}")
-            continue
-    
-    return False
+# List of required resources (using CORRECT names)
+required_resources = [
+    'punkt',
+    'punkt_tab', 
+    'stopwords',
+    'averaged_perceptron_tagger',  # This is the correct name - NOT _eng
+]
 
-def ensure_nltk_resources() -> None:
-    """Ensure all required NLTK resources are available."""
-    import nltk
-    
-    missing_resources = []
-    
-    # Check each resource
-    for resource_key, resource_info in NLTK_RESOURCES.items():
-        try:
-            # Try to find the resource
-            nltk.data.find(resource_info['path'])
-        except LookupError:
-            # Try alternative path for tagger
-            if resource_key == 'averaged_perceptron_tagger':
-                try:
-                    nltk.data.find('taggers/averaged_perceptron_tagger_eng')
-                    continue
-                except LookupError:
-                    missing_resources.append(resource_key)
-            else:
-                missing_resources.append(resource_key)
-    
-    # Download missing resources
-    if missing_resources:
-        with st.spinner("📥 Downloading NLTK language data (first run only)..."):
-            for resource_key in missing_resources:
-                success = download_nltk_resource(resource_key)
-                if not success:
-                    st.warning(f"⚠️ Could not download {resource_key}. Some features may be limited.")
+for resource in required_resources:
+    try:
+        # Check if already downloaded
+        if resource == 'punkt':
+            nltk.data.find('tokenizers/punkt')
+        elif resource == 'punkt_tab':
+            nltk.data.find('tokenizers/punkt_tab')
+        elif resource == 'stopwords':
+            nltk.data.find('corpora/stopwords')
+        elif resource == 'averaged_perceptron_tagger':
+            nltk.data.find('taggers/averaged_perceptron_tagger')
+        print(f"✅ {resource} already available")
+    except LookupError:
+        print(f"📥 Downloading {resource}...")
+        nltk.download(resource, download_dir=nltk_data_dir, quiet=False)
+        print(f"✅ {resource} downloaded")
 
-# Run the setup
-ensure_nltk_resources()
-
+print("📥 NLTK setup complete!")
 
 
 # ---------------------------------------------------------------------------
