@@ -30,7 +30,6 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 # Fix for SSL certificate issues with NLTK download
 # Fix for SSL certificate issues with NLTK download
-# Fix for SSL certificate issues with NLTK download
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -65,26 +64,49 @@ for resource in ['punkt', 'punkt_tab', 'stopwords', 'averaged_perceptron_tagger'
         nltk.download(resource, download_dir=nltk_data_dir, quiet=False)
         print(f"✅ {resource} downloaded")
 
-# CRITICAL FIX: Monkey patch NLTK to use the correct tagger name
+# COMPREHENSIVE FIX: Monkey patch the entire PerceptronTagger class
 import nltk.tag.perceptron
 
-# Save the original find function
-original_find = nltk.data.find
+# Save the original load_from_json method
+original_load_from_json = nltk.tag.perceptron.PerceptronTagger.load_from_json
 
-def patched_find(resource_name, *args, **kwargs):
-    """Patch to redirect averaged_perceptron_tagger_eng to averaged_perceptron_tagger"""
-    if resource_name.startswith('taggers/averaged_perceptron_tagger_eng'):
-        # Redirect to the non-eng version
-        new_name = resource_name.replace('_eng', '')
+def patched_load_from_json(self, lang='eng'):
+    """Patch to handle both eng and non-eng tagger names"""
+    try:
+        # Try the original method first
+        original_load_from_json(self, lang)
+    except LookupError:
         try:
-            return original_find(new_name, *args, **kwargs)
-        except LookupError:
-            # If that fails, try the original
-            return original_find(resource_name, *args, **kwargs)
-    return original_find(resource_name, *args, **kwargs)
+            # If lang is 'eng', try without the _eng suffix
+            if lang == 'eng':
+                # Try to find the non-eng version
+                loc = nltk.data.find('taggers/averaged_perceptron_tagger/')
+                # Load the weights and tagdict directly
+                import json
+                with open(loc + 'averaged_perceptron_tagger.pickle.weights.json', 'r') as fin:
+                    self.model.weights = json.load(fin)
+                with open(loc + 'averaged_perceptron_tagger.pickle.tagdict.json', 'r') as fin:
+                    self.tagdict = json.load(fin)
+                with open(loc + 'averaged_perceptron_tagger.pickle.classes.json', 'r') as fin:
+                    self.classes = json.load(fin)
+                return
+        except:
+            pass
+        
+        # If all else fails, try to download the tagger
+        try:
+            nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_dir, quiet=False)
+            # Try again with the original method
+            original_load_from_json(self, lang)
+        except:
+            # Ultimate fallback - create a dummy tagger that just returns noun tags
+            print("WARNING: Using fallback POS tagger")
+            self.model.weights = {}
+            self.tagdict = {}
+            self.classes = {'NN'}
 
 # Apply the patch
-nltk.data.find = patched_find
+nltk.tag.perceptron.PerceptronTagger.load_from_json = patched_load_from_json
 
 print("📥 NLTK setup complete!")
 # ---------------------------------------------------------------------------
@@ -438,7 +460,14 @@ class ImprovedMCQGenerator:
         return self._nltk.tokenize.word_tokenize(text)
 
     def _pos_tag(self, tokens: List[str]) -> List[Tuple[str, str]]:
-        return self._nltk.pos_tag(tokens)
+        if not tokens:
+           return []
+        try:
+            return self._nltk.pos_tag(tokens)
+        except Exception as e:
+            print(f"POS tagging failed: {e}, using fallback")
+            # Simple fallback - assume everything is a noun
+            return [(token, 'NN') for token in tokens]
 
     # -----------------------------------------------------------------------
     # EXACT OLD WORKING CODE: Question generation
