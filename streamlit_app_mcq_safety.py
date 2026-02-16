@@ -29,7 +29,6 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 
 # Fix for SSL certificate issues with NLTK download
-# Fix for SSL certificate issues with NLTK download
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -43,14 +42,31 @@ import nltk
 # Set NLTK data path to a writable directory in the cloud
 nltk_data_dir = os.path.join(os.path.dirname(__file__), "nltk_data")
 os.makedirs(nltk_data_dir, exist_ok=True)
-nltk.data.path.insert(0, nltk_data_dir)
 
-# Download exactly what the old code used
+# IMPORTANT: Clear any existing paths and set ONLY our directory
+nltk.data.path = [nltk_data_dir]
+
+# Download exactly what the old code used with force=False first
 print("📥 Downloading NLTK data for deployment...")
 nltk.download('punkt', download_dir=nltk_data_dir, quiet=False)
 nltk.download('stopwords', download_dir=nltk_data_dir, quiet=False)
 nltk.download('punkt_tab', download_dir=nltk_data_dir, quiet=False)
 nltk.download('averaged_perceptron_tagger_eng', download_dir=nltk_data_dir, quiet=False)
+
+# CRITICAL: Verify the tagger loaded correctly
+print("📥 Verifying NLTK tagger...")
+try:
+    test_tokens = ['The', 'cat', 'sat']
+    test_tags = nltk.pos_tag(test_tokens)
+    print(f"✅ Tagger working: {test_tags}")
+except Exception as e:
+    print(f"⚠️ Initial tagger failed: {e}")
+    print("Attempting force re-download...")
+    # If it failed, force re-download
+    nltk.download('averaged_perceptron_tagger_eng', download_dir=nltk_data_dir, force=True, quiet=False)
+    # Verify again
+    test_tags = nltk.pos_tag(test_tokens)
+    print(f"✅ Tagger working after re-download: {test_tags}")
 
 print("📥 NLTK setup complete!")
 # ---------------------------------------------------------------------------
