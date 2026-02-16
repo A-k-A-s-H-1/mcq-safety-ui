@@ -36,18 +36,101 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
+
 # NLTK data directory setup
 nltk_data_dir = os.path.join(os.path.dirname(__file__), "nltk_data")
 os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.data.path.append(nltk_data_dir)
 
-# Download NLTK data at startup
-import nltk
-for resource in ['punkt', 'stopwords', 'averaged_perceptron_tagger', 'punkt_tab']:
-    try:
-        nltk.data.find(f'tokenizers/{resource}' if resource == 'punkt' else f'corpora/{resource}')
-    except LookupError:
-        nltk.download(resource, download_dir=nltk_data_dir, quiet=True)
+NLTK_RESOURCES = {
+    'punkt': {
+        'path': 'tokenizers/punkt',
+        'download_name': 'punkt',
+        'fallback_names': ['punkt']
+    },
+    'punkt_tab': {
+        'path': 'tokenizers/punkt_tab',
+        'download_name': 'punkt_tab',
+        'fallback_names': ['punkt_tab']
+    },
+    'stopwords': {
+        'path': 'corpora/stopwords',
+        'download_name': 'stopwords',
+        'fallback_names': ['stopwords']
+    },
+    'averaged_perceptron_tagger': {
+        'path': 'taggers/averaged_perceptron_tagger',
+        'download_name': 'averaged_perceptron_tagger',
+        'fallback_names': ['averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng']
+    }
+}
+
+
+def download_nltk_resource(resource_key: str) -> bool:
+    """Download a specific NLTK resource with multiple fallback attempts."""
+    if resource_key not in NLTK_RESOURCES:
+        return False
+    
+    resource = NLTK_RESOURCES[resource_key]
+    
+    # Try each possible download name
+    for download_name in resource['fallback_names']:
+        try:
+            print(f"Downloading {download_name}...")
+            nltk.download(download_name, download_dir=nltk_data_dir, quiet=True)
+            
+            # Verify the download worked by trying to find it
+            try:
+                nltk.data.find(resource['path'])
+                return True
+            except LookupError:
+                # Try alternative path if main path fails
+                if download_name == 'averaged_perceptron_tagger':
+                    try:
+                        nltk.data.find('taggers/averaged_perceptron_tagger_eng')
+                        return True
+                    except LookupError:
+                        continue
+        except Exception as e:
+            print(f"Failed to download {download_name}: {e}")
+            continue
+    
+    return False
+
+def ensure_nltk_resources() -> None:
+    """Ensure all required NLTK resources are available."""
+    import nltk
+    
+    missing_resources = []
+    
+    # Check each resource
+    for resource_key, resource_info in NLTK_RESOURCES.items():
+        try:
+            # Try to find the resource
+            nltk.data.find(resource_info['path'])
+        except LookupError:
+            # Try alternative path for tagger
+            if resource_key == 'averaged_perceptron_tagger':
+                try:
+                    nltk.data.find('taggers/averaged_perceptron_tagger_eng')
+                    continue
+                except LookupError:
+                    missing_resources.append(resource_key)
+            else:
+                missing_resources.append(resource_key)
+    
+    # Download missing resources
+    if missing_resources:
+        with st.spinner("📥 Downloading NLTK language data (first run only)..."):
+            for resource_key in missing_resources:
+                success = download_nltk_resource(resource_key)
+                if not success:
+                    st.warning(f"⚠️ Could not download {resource_key}. Some features may be limited.")
+
+# Run the setup
+ensure_nltk_resources()
+
+
 
 # ---------------------------------------------------------------------------
 # Teacher / Student quiz storage (file-based)
@@ -235,18 +318,7 @@ def _lazy_imports():
 
 
 def ensure_nltk() -> None:
-    import nltk
-    needed = [
-        ("tokenizers/punkt", "punkt"),
-        ("corpora/stopwords", "stopwords"),
-        ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger_eng"),
-        ("tokenizers/punkt_tab", "punkt_tab"),
-    ]
-    for resource_path, download_name in needed:
-        try:
-            nltk.data.find(resource_path)
-        except LookupError:
-            nltk.download(download_name, quiet=True)
+    pass
 
 
 # ---------------------------------------------------------------------------
